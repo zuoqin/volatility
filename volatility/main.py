@@ -22,16 +22,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-
+import os
 import subprocess
 import re
 import argparse
 import logging
 import codecs
-
-
+import statistics
+import requests
+import json
+import shutil 
 files = {}
-
 
 def calculate(dir):
     result = subprocess.run(['git', '--git-dir', dir + '/.git', 'log',
@@ -39,7 +40,12 @@ def calculate(dir):
                              '--format=short',
                              '--stat=1000', '--stat-name-width=950'],
                             stdout=subprocess.PIPE)
-    return parse(result.stdout.decode("utf-8"))
+    #print(result.stdout)
+    try:
+        data = result.stdout.decode("utf-8")
+    except Exception as e:
+        data = result.stdout.decode("latin-1")
+    return parse(data)
 
 
 def find_next_commit(pos1, input):
@@ -103,37 +109,98 @@ def parse(input):
     return {'files': files, 'commits': num}
 
 
+def get_repo_detail(link, token):
+        if link[-1:] == '/':
+            link = link[:-1]
+        if link[-7:] == '-master':
+            link = link[:-7]
+
+        print('https://api.github.com/repos{}'.format(link))
+        print(token)
+        r = requests.get('https://api.github.com/repos{}'.format(link),
+                         headers={'Content-Type': 'application/json',
+                                  'Authorization': 'token {}'.format(token)})
+        data = r.json()
+        #print(data)
+        return data['created_at'], data['size'], data['stargazers_count'], data['language'], data['forks_count'], data['open_issues_count'],\
+            data['subscribers_count']
+
+
 def run_application():
+    res = []
+    dirs = []
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--path', type=str, required=False, default='')
+    parser.add_argument('--recursive', type=str, required=False, default='False')
+    parser.add_argument('--token', type=str, required=False, default='')
     args = parser.parse_args()
+    token = args.token
     folder = args.path
-    if len(folder) > 0:
-        data = calculate(folder)
+    recursive = args.recursive
+    if recursive == 'True':
+        recursive = True
     else:
+       recursive = False
+
+    if len(folder) <= 0:
         print('Missing --path parameter')
         return -1
-    vals = list(data['files'].values())
-    vals.sort(reverse=True)
-    calcmax = max(vals)
-    cnt = len(vals)
-    X = []
-    p = []
-    sum1 = 0
-    sum2 = 0
-    for i in range(cnt):
-        p.append(vals[i]/calcmax)
-        X.append(i/cnt)
-        sum1 = sum1 + i/cnt * vals[i]/calcmax
-        sum2 = sum2 + vals[i]/calcmax
 
-    mu = sum1/sum2
-    sum1 = 0
-    for i in range(cnt):
-        sum1 = sum1 + (X[i] - mu) * (X[i] - mu) * p[i]
+    if recursive:
+        for f in os.scandir(folder):
+            if f.is_dir:
+                found = False
+                for d in os.scandir(f.path):
+                    if d.is_dir:
+                        dirs.append(d.path)
+                        found = True
+                if found == False:
+                    print('333333', f.path)
+                    shutil.rmtree(f.path)
+    else:
+        dirs = [folder]
+    index = 1
+    for folder in dirs:
+        print(folder)
+        data = calculate(folder)
+        vals = list(data['files'].values())
+        vals.sort(reverse=True)
+        calcmax = max(vals)
+        cnt = len(vals)
+        X = []
+        p = []
+        sum1 = 0
+        sum2 = 0
+        mu = statistics.mean([x for x in vals])
+        for i in range(cnt):
+            p.append(vals[i])
+            X.append(i/cnt)
+            sum1 = sum1 + i/cnt * vals[i]/calcmax
+            sum2 = sum2 + vals[i]/calcmax
+        #mu = sum1/sum2
+        #sum1 = 0
+        for i in range(cnt):
+            sum1 = sum1 + (X[i] - mu) * (X[i] - mu) * p[i]
 
-    return round(sum1/sum2 * 100, 2)
+        import re
+        if folder[-1] == '/':
+            folder = folder[:-1]
+        arr = [m.start() for m in re.finditer('/', folder)]
+        print('444444', arr)
+        #pos1 = folder[:-2].rfind('/')
+        #pos2 = pos1 -2
+        #pos1 = folder[:-pos2].rfind('/')
+        print('77777', folder, folder[arr[-2]:])
+        created_at, size, stars, language, forks, open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
+        res.append({'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu,
+                    'created': created_at, 'size': size, 'stars': stars, 'forks': forks, 'issues': open_issues, 'subscribers': subscribers, 'language': language})
+        index = index + 1
+
+        print({'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu, 'index': index})
+    return res
 
 
 if __name__ == "__main__":
-    run_application()
+    res = run_application()
+    with open('output1.json', 'w') as outfile:
+        json.dump(res, outfile)

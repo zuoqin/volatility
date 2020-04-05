@@ -23,14 +23,15 @@ def downloadrepos(language):
         if not os.path.isdir(os.path.join(repos, path[len(path) - 2])):
             os.makedirs(os.path.join(repos, path[len(path) - 2]))
         thepath = os.path.join(repos, path[len(path) - 2], path[len(path) - 1])
+        thepath2 = os.path.join(repos, path[len(path) - 2])
         print('Consither: ', thepath)
         if not os.path.isdir(thepath) and not os.path.isdir(thepath + '-master'):
             # Huawei proxy connection
             subprocess.run(['wget', 'https://github.com' + city.a['href'] + '/archive/master.zip'],
                            cwd=os.path.join(repos, path[len(path) - 2]))
-            subprocess.run(['unzip', '-o', 'master.zip', '-d', thepath],
-                           cwd=os.path.join(repos, path[len(path) - 2]))
-            print('Work with: ', thepath)
+            subprocess.run(['unzip', '-o', 'master.zip', '-d', os.path.abspath(thepath2)],
+                           cwd=thepath2)
+            print('Work with: ', thepath2)
             # Normal connection
             #subprocess.run(['git', 'clone', 'https://github.com' + city.a['href'] + '.git'],
             #               cwd=os.path.join(repos, path[len(path) - 2]))

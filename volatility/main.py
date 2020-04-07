@@ -31,7 +31,8 @@ import codecs
 import statistics
 import requests
 import json
-import shutil 
+import shutil
+from multiprocessing.dummy import Pool
 files = {}
 
 def calculate(dir):
@@ -126,6 +127,47 @@ def get_repo_detail(link, token):
             data['subscribers_count']
 
 
+def calculate_folder(data):
+        folder = data['folder']
+        token = data['token']
+        print(folder)
+        data = calculate(folder)
+        vals = list(data['files'].values())
+        vals.sort(reverse=True)
+        calcmax = max(vals)
+        cnt = len(vals)
+        X = []
+        p = []
+        sum1 = 0
+        sum2 = 0
+        mu = statistics.mean([x for x in vals])
+        for i in range(cnt):
+            p.append(vals[i])
+            X.append(i/cnt)
+            sum1 = sum1 + i/cnt * vals[i]/calcmax
+            sum2 = sum2 + vals[i]/calcmax
+        #mu = sum1/sum2
+        #sum1 = 0
+        for i in range(cnt):
+            sum1 = sum1 + (X[i] - mu) * (X[i] - mu) * p[i]
+
+        import re
+        if folder[-1] == '/':
+            folder = folder[:-1]
+        arr = [m.start() for m in re.finditer('/', folder)]
+        print('Index: ', data['index'])
+        #pos1 = folder[:-2].rfind('/')
+        #pos2 = pos1 -2
+        #pos1 = folder[:-pos2].rfind('/')
+        print('77777', folder, folder[arr[-2]:])
+        try:
+            created_at, size, stars, language, forks, open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
+        except Exception as e:
+            return {'folder': ' ', 'value': 0, 'mu': 0, 'created': 0, 'size': 0, 'stars': 0, 'forks': 0, 'issues': 0, 'subscribers': 0, 'language': ' '}
+        return {'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu,
+                    'created': created_at, 'size': size, 'stars': stars, 'forks': forks, 'issues': open_issues, 'subscribers': subscribers, 'language': language}
+
+
 def run_application():
     res = []
     dirs = []
@@ -160,44 +202,19 @@ def run_application():
     else:
         dirs = [folder]
     index = 1
-    for folder in dirs:
-        print(folder)
-        data = calculate(folder)
-        vals = list(data['files'].values())
-        vals.sort(reverse=True)
-        calcmax = max(vals)
-        cnt = len(vals)
-        X = []
-        p = []
-        sum1 = 0
-        sum2 = 0
-        mu = statistics.mean([x for x in vals])
-        for i in range(cnt):
-            p.append(vals[i])
-            X.append(i/cnt)
-            sum1 = sum1 + i/cnt * vals[i]/calcmax
-            sum2 = sum2 + vals[i]/calcmax
-        #mu = sum1/sum2
-        #sum1 = 0
-        for i in range(cnt):
-            sum1 = sum1 + (X[i] - mu) * (X[i] - mu) * p[i]
+    pool = Pool(5)
+    data = [{'folder':x, 'index':i, 'token': token} for i,x in enumerate(dirs)]
+    results = pool.map(calculate_folder, data)
 
-        import re
-        if folder[-1] == '/':
-            folder = folder[:-1]
-        arr = [m.start() for m in re.finditer('/', folder)]
-        print('444444', arr)
-        #pos1 = folder[:-2].rfind('/')
-        #pos2 = pos1 -2
-        #pos1 = folder[:-pos2].rfind('/')
-        print('77777', folder, folder[arr[-2]:])
-        created_at, size, stars, language, forks, open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
-        res.append({'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu,
-                    'created': created_at, 'size': size, 'stars': stars, 'forks': forks, 'issues': open_issues, 'subscribers': subscribers, 'language': language})
-        index = index + 1
-
-        print({'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu, 'index': index})
-    return res
+    pool.close()
+    pool.join()
+    #for item in results:
+    #    print(item)
+    #for folder in dirs:
+    #    vals, mu, res = calculate_folder(folder, token)
+    #    index = index + 1
+    #    print({'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu, 'index': index})
+    return results
 
 
 if __name__ == "__main__":

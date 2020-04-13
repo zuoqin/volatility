@@ -32,20 +32,40 @@ import statistics
 import requests
 import json
 import shutil
+from datetime import datetime
 from multiprocessing.dummy import Pool
-files = {}
+#files = {}
 
-def calculate(dir):
+logging.basicConfig(level=logging.WARNING)
+def calculate(dir, index):
     result = subprocess.run(['git', '--git-dir', dir + '/.git', 'log',
                              '--reverse',
                              '--format=short',
                              '--stat=1000', '--stat-name-width=950'],
                             stdout=subprocess.PIPE)
+    #cmd = 'git --git-dir ' + dir + '/.git log --reverse --format=short --stat=1000 --stat-name-width=950 > out/out_file' + str(index) + '.txt'
+    #os.system(cmd)
     #print(result.stdout)
     try:
         data = result.stdout.decode("utf-8")
     except Exception as e:
-        data = result.stdout.decode("latin-1")
+        try:
+            data = result.stdout.decode("latin-1")
+        except:
+            with open('files_out3.txt', 'a+') as the_file:
+                the_file.write(dir + '\n')
+            return {'files': {}, 'commits': 0}
+
+
+    #if 1==1:
+    #    f = open('out/out_file' + str(index) + '.txt', "r")
+    #    data = f.read()
+    #    f.close()
+    #except Exception as e:
+        #try:
+   #         f = open('out/out_file' + str(index) + '.txt', "rb")
+   #         data = f.read().decode("latin-1")
+   #         return parse(data)
     return parse(data)
 
 
@@ -56,24 +76,44 @@ def find_next_commit(pos1, input):
     pos1 = pos2
     pos2 = input.find('Author: ', pos1)
     pos2 = input.find('\n', pos2+1)
-    pos2 = input.find('\n', pos2+1)
-    pos2 = input.find('\n', pos2+1)
-    pos2 = input.find('\n', pos2+1)
+    pos2 = pos2 + 2
+    pos1 = input.find('\n', pos2+1)
+    #print('00000', input[pos2: pos1])
+    while pos1 - pos2 > 3 and pos1 >= 0 and pos2 >= 0:
+        pos1 = pos1 + 1
+        pos2 = pos1
+        pos1 = input.find('\n', pos2)
+    #    print('22222', input[pos2:pos1], pos1 - pos2)
     if pos2 < 0:
         return pos2
     pos1 = pos2 + 1
+    #if input[pos1 + 1:pos1 + 7] == 'commit':
+    #    print('77777', pos1)
+    #    return find_next_commit(pos1, input)
+    #else:
+    #    print('44444', input[pos1:pos1 + 60])
+    #print('3333', input[pos1:pos1+30])
     return pos1
 
 
+def parse_file(file):
+    f = open(file, "rb")
+    data = f.read().decode("UTF-8")
+    f.close()
+    return parse(data)
+
+
+
 def parse(input):
+    files = {}
     line = ''
     num = 1
     pos1 = find_next_commit(0, input)
     if pos1 >= 0:
         logging.info('Commit: {}'.format(num))
     num = num + 1
-    with codecs.open("git_out.txt", "w+", "utf-8") as f:
-        f.write(input)
+    #with codecs.open("git_out.txt", "w+", "utf-8") as f:
+    #    f.write(input)
     while(pos1 < len(input) and pos1 >= 0):
         pos2 = input.find('|', pos1)
         pos3 = input.find('\n', pos1)
@@ -87,8 +127,8 @@ def parse(input):
             else:
                 if line[0:6] == 'commit':
                     logging.info('Commit: {}'.format(num))
-                with open('files_out.txt', 'w+') as the_file:
-                    the_file.write(str(files))
+                #with open('files_out.txt', 'w+') as the_file:
+                #    the_file.write(str(files))
                 break
         else:
             file = input[pos1:pos2].strip()
@@ -127,45 +167,56 @@ def get_repo_detail(link, token):
             data['subscribers_count']
 
 
-def calculate_folder(data):
-        folder = data['folder']
-        token = data['token']
-        print(folder)
-        data = calculate(folder)
-        vals = list(data['files'].values())
-        vals.sort(reverse=True)
-        calcmax = max(vals)
-        cnt = len(vals)
-        X = []
-        p = []
-        sum1 = 0
-        sum2 = 0
-        mu = statistics.mean([x for x in vals])
-        for i in range(cnt):
-            p.append(vals[i])
-            X.append(i/cnt)
-            sum1 = sum1 + i/cnt * vals[i]/calcmax
-            sum2 = sum2 + vals[i]/calcmax
-        #mu = sum1/sum2
-        #sum1 = 0
-        for i in range(cnt):
-            sum1 = sum1 + (X[i] - mu) * (X[i] - mu) * p[i]
+def calculate_folder(params):
+    folder = params['folder']
+    token = params['token']
+    print(folder)
+    try:
+        data = calculate(folder, params['index'])
+        if data['commits'] == 0:
+            return {'folder': ' ', 'value': 0, 'mu': 0}
+        else:
+            print('Commits: ', data['commits'])
+    except Exception as e:
+        with open('files_out3.txt', 'a+') as the_file:
+            the_file.write(folder + '\n')
+            return {'folder': folder, 'value': 0, 'mu': 0}
+    vals = list(data['files'].values())
+    if len(vals) < 2:
+        return {'folder': folder, 'value': -111, 'mu': 0}
+    vals.sort(reverse=True)
+    calcmax = max(vals)
+    cnt = len(vals)
+    X = []
+    p = []
+    sum1 = 0
+    sum2 = 0
+    mu = statistics.mean([x for x in vals])
+    for i in range(cnt):
+        p.append(vals[i])
+        X.append(i/cnt)
+        sum1 = sum1 + i/cnt * vals[i]/calcmax
+        sum2 = sum2 + vals[i]/calcmax
+    #mu = sum1/sum2
+    #sum1 = 0
+    for i in range(cnt):
+        sum1 = sum1 + (X[i] - mu) * (X[i] - mu) * p[i]
 
-        import re
-        if folder[-1] == '/':
-            folder = folder[:-1]
-        arr = [m.start() for m in re.finditer('/', folder)]
-        print('Index: ', data['index'])
-        #pos1 = folder[:-2].rfind('/')
-        #pos2 = pos1 -2
-        #pos1 = folder[:-pos2].rfind('/')
-        print('77777', folder, folder[arr[-2]:])
-        try:
-            created_at, size, stars, language, forks, open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
-        except Exception as e:
-            return {'folder': ' ', 'value': 0, 'mu': 0, 'created': 0, 'size': 0, 'stars': 0, 'forks': 0, 'issues': 0, 'subscribers': 0, 'language': ' '}
-        return {'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu,
-                    'created': created_at, 'size': size, 'stars': stars, 'forks': forks, 'issues': open_issues, 'subscribers': subscribers, 'language': language}
+    import re
+    if folder[-1] == '/':
+        folder = folder[:-1]
+    arr = [m.start() for m in re.finditer('/', folder)]
+    print('Index: ', params['index'])
+    #pos1 = folder[:-2].rfind('/')
+    #pos2 = pos1 -2
+    #pos1 = folder[:-pos2].rfind('/')
+    print('77777', folder, '; mu: ', mu)
+    #try:
+    #    created_at, size, stars, language, forks, open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
+    #except Exception as e:
+    return {'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu}
+    return {'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu,
+            'created': created_at, 'size': size, 'stars': stars, 'forks': forks, 'issues': open_issues, 'subscribers': subscribers, 'language': language}
 
 
 def run_application():
@@ -201,8 +252,9 @@ def run_application():
                     shutil.rmtree(f.path)
     else:
         dirs = [folder]
+    dirs.sort()
     index = 1
-    pool = Pool(5)
+    pool = Pool(17)
     data = [{'folder':x, 'index':i, 'token': token} for i,x in enumerate(dirs)]
     results = pool.map(calculate_folder, data)
 
@@ -218,6 +270,8 @@ def run_application():
 
 
 if __name__ == "__main__":
+    dt = datetime.utcnow()
     res = run_application()
-    with open('output1.json', 'w') as outfile:
+    with open('output.json', 'w') as outfile:
         json.dump(res, outfile)
+    print('Started: ', dt, '   Finished: ', datetime.utcnow())

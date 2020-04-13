@@ -11,7 +11,9 @@ def downloadrepos(language):
     args = parser.parse_args()
     numrepos = args.nrepos
     repos = 'target'
-    repos2 = '/home/zuoqin/volatility/target'
+    with open('folders.txt') as f:
+        content = f.readlines()
+    content = [x.strip() for x in content]
     if not os.path.isdir(repos):
         os.makedirs(repos)
     result = r.get('https://github.com/trending/{}?since=daily'.format(language))
@@ -24,9 +26,8 @@ def downloadrepos(language):
         if not os.path.isdir(os.path.join(repos, path[len(path) - 2])):
             os.makedirs(os.path.join(repos, path[len(path) - 2]))
         thepath = os.path.join(repos, path[len(path) - 2], path[len(path) - 1])
-        thepath2 = os.path.join(repos2, path[len(path) - 2], path[len(path) - 1])
-        print('Consither: ', thepath)
-        if not os.path.isdir(thepath) and not os.path.isdir(thepath2):
+        print('Consither: ', thepath[6:])
+        if not os.path.isdir(thepath) and thepath[6:] not in content:
             # Huawei proxy connection
             #subprocess.run(['wget', 'https://github.com' + city.a['href'] + '/archive/master.zip'],
             #               cwd=os.path.join(repos, path[len(path) - 2]))

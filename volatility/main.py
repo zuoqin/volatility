@@ -185,8 +185,9 @@ def calculate_folder(params):
     if folder[-1] == '/':
         folder = folder[:-1]
     arr = [m.start() for m in re.finditer('/', folder)]
-    print('Index: ', params['index'])
     mu = statistics.stdev(vals)/mean
+    print('Index: ', params['index'], '; folder: ', folder,
+          '; mean: ', mean, '; mu: ', mu)
     try:
         created_at, size, stars, language, forks, \
           open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)

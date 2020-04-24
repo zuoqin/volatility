@@ -3,5 +3,5 @@ import sys, os
 sys.path.append(os.getcwd())
 import volatility
 res = volatility.run_application()
-if res >= 0:
-    print(res, '%')
+if res[0]['mu'] >= 0:
+    print("{:.2f}%".format(res[0]['mu']))

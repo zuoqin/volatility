@@ -138,7 +138,7 @@ def get_repo_detail(link, token):
     if link[-7:] == '-master':
         link = link[:-7]
 
-    print('https://api.github.com/repos{}'.format(link))
+    logging.info('https://api.github.com/repos{}'.format(link))
     r = requests.get('https://api.github.com/repos{}'.format(link),
                      headers={'Content-Type': 'application/json',
                               'Authorization': 'token {}'.format(token)})
@@ -151,13 +151,13 @@ def get_repo_detail(link, token):
 def calculate_folder(params):
     folder = params['folder']
     token = params['token']
-    print(folder)
+    logging.info(folder)
     try:
         data = calculate(folder, params['index'])
         if data['commits'] == 0:
             return {'folder': ' ', 'value': 0, 'mu': 0}
         else:
-            print('Commits: ', data['commits'])
+            logging.info('Commits: {}'.format(data['commits']))
     except Exception:
         with open('files_out3.txt', 'a+') as the_file:
             the_file.write(folder + '\n')
@@ -186,8 +186,8 @@ def calculate_folder(params):
         folder = folder[:-1]
     arr = [m.start() for m in re.finditer('/', folder)]
     mu = statistics.stdev(vals)/mean
-    print('Index: ', params['index'], '; folder: ', folder,
-          '; mean: ', mean, '; mu: ', mu)
+    logging.info('Index: {}; folder: ; mean: ; mu: '.format(params['index'],
+                 folder, mean, mu))
     try:
         created_at, size, stars, language, forks, \
           open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
@@ -217,7 +217,7 @@ def run_application():
         recursive = False
 
     if len(folder) <= 0:
-        print('Missing --path parameter')
+        logging.info('Missing --path parameter')
         return -1
 
     if recursive:
@@ -248,4 +248,4 @@ if __name__ == "__main__":
     res = run_application()
     with open('output.json', 'w') as outfile:
         json.dump(res, outfile)
-    print('Started: ', dt, '   Finished: ', datetime.utcnow())
+    logging.info('Started: ;   Finished: '.format(dt, datetime.utcnow()))

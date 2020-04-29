@@ -27,25 +27,40 @@ import subprocess
 import re
 import argparse
 import logging
-import codecs
 import statistics
 import requests
 import json
 import shutil
+from datetime import datetime
 from multiprocessing.dummy import Pool
-files = {}
 
-def calculate(dir):
+logging.basicConfig(level=logging.WARNING)
+
+
+def calculate(dir, index):
     result = subprocess.run(['git', '--git-dir', dir + '/.git', 'log',
                              '--reverse',
                              '--format=short',
                              '--stat=1000', '--stat-name-width=950'],
                             stdout=subprocess.PIPE)
-    #print(result.stdout)
+    # Alternative solution
+    # cmd = 'git --git-dir {}/.git log --reverse --format=short --stat=1000'\
+    # ' --stat-name-width=950 > out/out_file{}.txt'.format(dir, index)
+    # os.system(cmd)
+    # f = open('out/out_file' + str(index) + '.txt', "r")
+    # data = f.read()
+    # f.close()
+
     try:
         data = result.stdout.decode("utf-8")
-    except Exception as e:
-        data = result.stdout.decode("latin-1")
+    except Exception:
+        try:
+            data = result.stdout.decode("latin-1")
+        except Exception:
+            with open('files_out3.txt', 'a+') as the_file:
+                the_file.write(dir + '\n')
+            return {'files': {}, 'commits': 0}
+
     return parse(data)
 
 
@@ -56,24 +71,33 @@ def find_next_commit(pos1, input):
     pos1 = pos2
     pos2 = input.find('Author: ', pos1)
     pos2 = input.find('\n', pos2+1)
-    pos2 = input.find('\n', pos2+1)
-    pos2 = input.find('\n', pos2+1)
-    pos2 = input.find('\n', pos2+1)
+    pos2 = pos2 + 2
+    pos1 = input.find('\n', pos2+1)
+    while pos1 - pos2 > 3 and pos1 >= 0 and pos2 >= 0:
+        pos1 = pos1 + 1
+        pos2 = pos1
+        pos1 = input.find('\n', pos2)
     if pos2 < 0:
         return pos2
     pos1 = pos2 + 1
     return pos1
 
 
+def parse_file(file):
+    f = open(file, "rb")
+    data = f.read().decode("UTF-8")
+    f.close()
+    return parse(data)
+
+
 def parse(input):
+    files = {}
     line = ''
     num = 1
     pos1 = find_next_commit(0, input)
     if pos1 >= 0:
         logging.info('Commit: {}'.format(num))
     num = num + 1
-    with codecs.open("git_out.txt", "w+", "utf-8") as f:
-        f.write(input)
     while(pos1 < len(input) and pos1 >= 0):
         pos2 = input.find('|', pos1)
         pos3 = input.find('\n', pos1)
@@ -87,8 +111,6 @@ def parse(input):
             else:
                 if line[0:6] == 'commit':
                     logging.info('Commit: {}'.format(num))
-                with open('files_out.txt', 'w+') as the_file:
-                    the_file.write(str(files))
                 break
         else:
             file = input[pos1:pos2].strip()
@@ -111,69 +133,79 @@ def parse(input):
 
 
 def get_repo_detail(link, token):
-        if link[-1:] == '/':
-            link = link[:-1]
-        if link[-7:] == '-master':
-            link = link[:-7]
+    if link[-1:] == '/':
+        link = link[:-1]
+    if link[-7:] == '-master':
+        link = link[:-7]
 
-        print('https://api.github.com/repos{}'.format(link))
-        print(token)
-        r = requests.get('https://api.github.com/repos{}'.format(link),
-                         headers={'Content-Type': 'application/json',
-                                  'Authorization': 'token {}'.format(token)})
-        data = r.json()
-        #print(data)
-        return data['created_at'], data['size'], data['stargazers_count'], data['language'], data['forks_count'], data['open_issues_count'],\
-            data['subscribers_count']
+    logging.info('https://api.github.com/repos{}'.format(link))
+    r = requests.get('https://api.github.com/repos{}'.format(link),
+                     headers={'Content-Type': 'application/json',
+                              'Authorization': 'token {}'.format(token)})
+    data = r.json()
+    return data['created_at'], data['size'], data['stargazers_count'],\
+        data['language'], data['forks_count'], data['open_issues_count'],\
+        data['subscribers_count']
 
 
-def calculate_folder(data):
-        folder = data['folder']
-        token = data['token']
-        print(folder)
-        data = calculate(folder)
-        vals = list(data['files'].values())
-        vals.sort(reverse=True)
-        calcmax = max(vals)
-        cnt = len(vals)
-        X = []
-        p = []
-        sum1 = 0
-        sum2 = 0
-        mu = statistics.mean([x for x in vals])
-        for i in range(cnt):
-            p.append(vals[i])
-            X.append(i/cnt)
-            sum1 = sum1 + i/cnt * vals[i]/calcmax
-            sum2 = sum2 + vals[i]/calcmax
-        #mu = sum1/sum2
-        #sum1 = 0
-        for i in range(cnt):
-            sum1 = sum1 + (X[i] - mu) * (X[i] - mu) * p[i]
+def calculate_folder(params):
+    folder = params['folder']
+    token = params['token']
+    logging.info(folder)
+    try:
+        data = calculate(folder, params['index'])
+        if data['commits'] == 0:
+            return {'folder': ' ', 'value': 0, 'mu': 0}
+        else:
+            logging.info('Commits: {}'.format(data['commits']))
+    except Exception:
+        with open('files_out3.txt', 'a+') as the_file:
+            the_file.write(folder + '\n')
+            return {'folder': folder, 'value': 0, 'mu': 0}
+    vals = list(data['files'].values())
+    if len(vals) < 2:
+        return {'folder': folder, 'value': -111, 'mu': 0}
+    vals.sort(reverse=True)
+    calcmax = max(vals)
+    cnt = len(vals)
+    X = []
+    p = []
+    sum1 = 0
+    sum2 = 0
+    mean = statistics.mean([x for x in vals])
+    for i in range(cnt):
+        p.append(vals[i])
+        X.append(i/cnt)
+        sum1 = sum1 + i/cnt * vals[i]/calcmax
+        sum2 = sum2 + vals[i]/calcmax
+    for i in range(cnt):
+        sum1 = sum1 + (X[i] - mean) * (X[i] - mean) * p[i]
 
-        import re
-        if folder[-1] == '/':
-            folder = folder[:-1]
-        arr = [m.start() for m in re.finditer('/', folder)]
-        print('Index: ', data['index'])
-        #pos1 = folder[:-2].rfind('/')
-        #pos2 = pos1 -2
-        #pos1 = folder[:-pos2].rfind('/')
-        print('77777', folder, folder[arr[-2]:])
-        try:
-            created_at, size, stars, language, forks, open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
-        except Exception as e:
-            return {'folder': ' ', 'value': 0, 'mu': 0, 'created': 0, 'size': 0, 'stars': 0, 'forks': 0, 'issues': 0, 'subscribers': 0, 'language': ' '}
-        return {'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu,
-                    'created': created_at, 'size': size, 'stars': stars, 'forks': forks, 'issues': open_issues, 'subscribers': subscribers, 'language': language}
+    import re
+    if folder[-1] == '/':
+        folder = folder[:-1]
+    arr = [m.start() for m in re.finditer('/', folder)]
+    mu = statistics.stdev(vals)/mean
+    logging.info('Index: {}; folder: ; mean: ; mu: '.format(params['index'],
+                 folder, mean, mu))
+    try:
+        created_at, size, stars, language, forks, \
+          open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
+    except Exception:
+        return {'folder': folder, 'mean': mean, 'mu': mu}
+    return {'folder': folder, 'mean': mean, 'mu': mu,
+            'created': created_at, 'size': size, 'stars': stars,
+            'forks': forks,
+            'issues': open_issues, 'subscribers': subscribers,
+            'language': language}
 
 
 def run_application():
-    res = []
     dirs = []
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--path', type=str, required=False, default='')
-    parser.add_argument('--recursive', type=str, required=False, default='False')
+    parser.add_argument('--recursive', type=str, required=False,
+                        default='False')
     parser.add_argument('--token', type=str, required=False, default='')
     args = parser.parse_args()
     token = args.token
@@ -182,10 +214,10 @@ def run_application():
     if recursive == 'True':
         recursive = True
     else:
-       recursive = False
+        recursive = False
 
     if len(folder) <= 0:
-        print('Missing --path parameter')
+        logging.info('Missing --path parameter')
         return -1
 
     if recursive:
@@ -196,28 +228,24 @@ def run_application():
                     if d.is_dir:
                         dirs.append(d.path)
                         found = True
-                if found == False:
-                    print('333333', f.path)
+                if not found:
                     shutil.rmtree(f.path)
     else:
         dirs = [folder]
-    index = 1
-    pool = Pool(5)
-    data = [{'folder':x, 'index':i, 'token': token} for i,x in enumerate(dirs)]
+    dirs.sort()
+    pool = Pool(17)
+    data = [{'folder': x, 'index': i, 'token': token}
+            for i, x in enumerate(dirs)]
     results = pool.map(calculate_folder, data)
 
     pool.close()
     pool.join()
-    #for item in results:
-    #    print(item)
-    #for folder in dirs:
-    #    vals, mu, res = calculate_folder(folder, token)
-    #    index = index + 1
-    #    print({'folder': folder, 'value': statistics.stdev(vals)/mu, 'mu': mu, 'index': index})
     return results
 
 
 if __name__ == "__main__":
+    dt = datetime.utcnow()
     res = run_application()
-    with open('output1.json', 'w') as outfile:
+    with open('output.json', 'w') as outfile:
         json.dump(res, outfile)
+    logging.info('Started: ;   Finished: '.format(dt, datetime.utcnow()))

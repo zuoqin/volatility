@@ -34,14 +34,13 @@ import shutil
 from datetime import datetime
 from multiprocessing.dummy import Pool
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.DEBUG)
 
 
 def calculate(dir, index):
     result = subprocess.run(['git', '--git-dir', dir + '/.git', 'log',
                              '--reverse',
-                             '--format=short',
-                             '--stat=1000', '--stat-name-width=950'],
+                             '--numstat'],
                             stdout=subprocess.PIPE)
     # Alternative solution
     # cmd = 'git --git-dir {}/.git log --reverse --format=short --stat=1000'\
@@ -61,7 +60,7 @@ def calculate(dir, index):
                 the_file.write(dir + '\n')
             return {'files': {}, 'commits': 0}
 
-    return parse(data)
+    return parse(data, dir)
 
 
 def find_next_commit(pos1, input):
@@ -90,45 +89,47 @@ def parse_file(file):
     return parse(data)
 
 
-def parse(input):
+def parse(input, dir):
     files = {}
     line = ''
-    num = 1
+    num = 0
     pos1 = find_next_commit(0, input)
-    if pos1 >= 0:
-        logging.info('Commit: {}'.format(num))
     num = num + 1
     while(pos1 < len(input) and pos1 >= 0):
-        pos2 = input.find('|', pos1)
-        pos3 = input.find('\n', pos1)
-        line = input[pos1:pos3]
-        if 'changed,' in line or line[0:6] == 'commit':
-            if input.find('commit', pos1+1) > 0:
-                pos1 = find_next_commit(pos1, input)
-                logging.info('Commit: {}'.format(num))
-                num = num + 1
-                continue
-            else:
-                if line[0:6] == 'commit':
-                    logging.info('Commit: {}'.format(num))
-                break
+        pos2 = input.find('\n', pos1)
+        line = input[pos1:pos2]
+        pos1 = pos2 + 1
+        if line[0:6] == 'commit':
+            # logging.info('Commit: {}'.format(num))
+            num = num + 1
         else:
-            file = input[pos1:pos2].strip()
+            parse_data = line.split('\t')
+            if len(parse_data) != 3:
+                continue
+            file = parse_data[2]
+            try:
+                added = int(parse_data[0])
+            except Exception:
+                added = 0
+            try:
+                deleted = int(parse_data[1])
+            except Exception:
+                deleted = 0
+
             if "=>" in file:
+                logging.info('777777', file)
+                exit()
                 f = file.split("=>")
                 if f[0] in files:
                     prev = files[f[0]]
                     del files[f[0]]
                     files[f[1]] = prev
-                    res = re.findall(r'\d+', input[pos2 + 1:pos3])
-                    if int(res[0]) > 0:
-                        files[f[1]] = prev + 1
+                    files[f[1]] = prev + added + deleted
             else:
                 if file in files:
-                    files[file] = files[file] + 1
+                    files[file] = files[file] + added + deleted
                 else:
-                    files[file] = 1
-        pos1 = pos3 + 1
+                    files[file] = added + deleted
     return {'files': files, 'commits': num}
 
 
@@ -188,6 +189,7 @@ def calculate_folder(params):
     mu = statistics.stdev(vals)/mean
     logging.info('Index: {}; folder: ; mean: ; mu: '.format(params['index'],
                  folder, mean, mu))
+
     try:
         created_at, size, stars, language, forks, \
           open_issues, subscribers = get_repo_detail(folder[arr[-2]:], token)
@@ -233,11 +235,10 @@ def run_application():
     else:
         dirs = [folder]
     dirs.sort()
-    pool = Pool(17)
+    pool = Pool(1)
     data = [{'folder': x, 'index': i, 'token': token}
             for i, x in enumerate(dirs)]
     results = pool.map(calculate_folder, data)
-
     pool.close()
     pool.join()
     return results
@@ -248,4 +249,4 @@ if __name__ == "__main__":
     res = run_application()
     with open('output.json', 'w') as outfile:
         json.dump(res, outfile)
-    logging.info('Started: ;   Finished: '.format(dt, datetime.utcnow()))
+    print('Started: ', dt, '   Finished: ', datetime.utcnow())

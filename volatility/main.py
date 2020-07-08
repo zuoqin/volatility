@@ -21,7 +21,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
+import sys
 import os
 import subprocess
 import re
@@ -35,6 +35,7 @@ from datetime import datetime
 from multiprocessing.dummy import Pool
 
 logging.basicConfig(level=logging.DEBUG)
+max_allowed = 99999
 
 
 def calculate(dir, index):
@@ -182,7 +183,6 @@ def calculate_folder(params):
     for i in range(cnt):
         sum1 = sum1 + (X[i] - mean) * (X[i] - mean) * p[i]
 
-    import re
     if folder[-1] == '/':
         folder = folder[:-1]
     arr = [m.start() for m in re.finditer('/', folder)]
@@ -203,16 +203,20 @@ def calculate_folder(params):
 
 
 def run_application():
+    global max_allowed
     dirs = []
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--path', type=str, required=False, default='')
     parser.add_argument('--recursive', type=str, required=False,
                         default='False')
     parser.add_argument('--token', type=str, required=False, default='')
+    parser.add_argument('--max_allowed', type=float, required=False,
+                        default=99999)
     args = parser.parse_args()
     token = args.token
     folder = args.path
     recursive = args.recursive
+    max_allowed = args.max_allowed
     if recursive == 'True':
         recursive = True
     else:
@@ -250,3 +254,5 @@ if __name__ == "__main__":
     with open('output.json', 'w') as outfile:
         json.dump(res, outfile)
     print('Started: ', dt, '   Finished: ', datetime.utcnow())
+    if len(res) < 1 or res[0]['mu'] > max_allowed:
+        sys.exit(155)
